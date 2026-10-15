@@ -18,7 +18,7 @@ function App() {
 
   // Para testar no mesmo computador, use localhost.
   // Para celulares na mesma rede Wi-Fi, troque pelo IP local do computador.
-  const API_URL = 'http://localhost:3001';
+  const API_URL = 'https://deu-match-api.onrender.com';
 
   useEffect(() => {
     if (tela !== 'participantes' || !participanteAtualId) return;
