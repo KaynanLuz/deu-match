@@ -200,6 +200,10 @@ function App() {
               >
                 Criar meu perfil <span>→</span>
               </button>
+              
+              <button onClick={() => setTela('participantes')}>
+              Ver participantes
+              </button>
 
               <div className="hero-note">
                 <span>♥</span> Novas conexões, boas histórias.
