@@ -51,7 +51,7 @@ function App() {
 
   function abrirCadastroOuDescoberta() {
   if (participanteAtualId) {
-    setTela('participantes');
+    setTela('meuPerfil');
   } else {
     setTela('cadastro');
   }
@@ -59,13 +59,6 @@ function App() {
 
   async function cadastrar(e) {
   e.preventDefault();
-
-  // Se já existe um perfil salvo neste navegador,
-  // volta para a descoberta em vez de criar outro.
-  if (participanteAtualId) {
-    setTela('participantes');
-    return;
-  }
 
   const novo = {
     nome: nome.trim(),
@@ -203,7 +196,7 @@ function App() {
 
               <button
                 className="primary-button"
-                onClick={abrirCadastroOuDescoberta}
+                onClick={() => setTela('cadastro')}
               >
                 Criar meu perfil <span>→</span>
               </button>
