@@ -49,8 +49,23 @@ function App() {
     return () => clearInterval(intervalo);
   }, [tela, participanteAtualId]);
 
+  function abrirCadastroOuDescoberta() {
+  if (participanteAtualId) {
+    setTela('participantes');
+  } else {
+    setTela('cadastro');
+  }
+}
+
   async function cadastrar(e) {
   e.preventDefault();
+
+  // Se já existe um perfil salvo neste navegador,
+  // volta para a descoberta em vez de criar outro.
+  if (participanteAtualId) {
+    setTela('participantes');
+    return;
+  }
 
   const novo = {
     nome: nome.trim(),
@@ -159,8 +174,10 @@ function App() {
 
         <button
           className="profile-button"
-          onClick={() => setTela('cadastro')}
-          aria-label="Criar perfil"
+          onClick={abrirCadastroOuDescoberta}
+          aria-label={
+          participanteAtualId ? 'Ver participantes' : 'Criar perfil'
+        }
         >
           <span>＋</span>
         </button>
@@ -186,7 +203,7 @@ function App() {
 
               <button
                 className="primary-button"
-                onClick={() => setTela('cadastro')}
+                onClick={abrirCadastroOuDescoberta}
               >
                 Criar meu perfil <span>→</span>
               </button>
