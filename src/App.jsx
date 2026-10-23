@@ -12,6 +12,7 @@ function App() {
   const [foto, setFoto] = useState('');
   const [curtidos, setCurtidos] = useState([]);
   const [busca, setBusca] = useState('');
+  const [modoEdicao, setModoEdicao] = useState(false);
   const [participanteAtualId, setParticipanteAtualId] = useState(
     () => localStorage.getItem('deuMatchParticipanteId') || ''
   );
@@ -21,24 +22,52 @@ function App() {
   const API_URL = 'https://deu-match-api.onrender.com';
 
   useEffect(() => {
-    if (tela !== 'participantes' || !participanteAtualId) return;
+    if (tela !== 'participantes') return;
+
+    let ativo = true;
 
     async function carregarDados() {
       try {
-        const [respostaPessoas, respostaCurtidas] = await Promise.all([
-          fetch(`${API_URL}/api/participantes?excluirId=${encodeURIComponent(participanteAtualId)}`),
-          fetch(`${API_URL}/api/curtidas?deId=${encodeURIComponent(participanteAtualId)}`)
-        ]);
-
-        if (!respostaPessoas.ok || !respostaCurtidas.ok) {
+        const respostaPessoas = await fetch(`${API_URL}/api/participantes`);
+        if (!respostaPessoas.ok) {
           throw new Error('Não foi possível carregar os participantes.');
         }
 
         const pessoas = await respostaPessoas.json();
-        const dadosCurtidas = await respostaCurtidas.json();
+        if (!ativo) return;
 
-        setParticipantes(pessoas);
-        setCurtidos(dadosCurtidas.curtidos || []);
+        if (participanteAtualId && !pessoas.some((pessoa) => pessoa.id === participanteAtualId)) {
+          localStorage.removeItem('deuMatchParticipanteId');
+          setParticipanteAtualId('');
+          setCurtidos([]);
+          setParticipantes(pessoas);
+          setModoEdicao(false);
+          setTela('cadastro');
+          alert('Seu perfil salvo neste navegador não foi encontrado no servidor. Crie seu perfil novamente.');
+          return;
+        }
+
+        setParticipantes(
+          participanteAtualId
+            ? pessoas.filter((pessoa) => pessoa.id !== participanteAtualId)
+            : pessoas
+        );
+
+        if (!participanteAtualId) {
+          setCurtidos([]);
+          return;
+        }
+
+        const respostaCurtidas = await fetch(
+          `${API_URL}/api/curtidas?deId=${encodeURIComponent(participanteAtualId)}`
+        );
+
+        if (respostaCurtidas.ok) {
+          const dadosCurtidas = await respostaCurtidas.json();
+          if (ativo) setCurtidos(dadosCurtidas.curtidos || []);
+        } else if (ativo) {
+          setCurtidos([]);
+        }
       } catch (erro) {
         console.error('Erro ao carregar dados:', erro);
       }
@@ -46,60 +75,108 @@ function App() {
 
     carregarDados();
     const intervalo = setInterval(carregarDados, 3000);
-    return () => clearInterval(intervalo);
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+    };
   }, [tela, participanteAtualId]);
 
-  function abrirCadastroOuDescoberta() {
-  if (participanteAtualId) {
-    setTela('meuPerfil');
-  } else {
-    setTela('cadastro');
-  }
-}
-
-  async function cadastrar(e) {
-  e.preventDefault();
-
-  const novo = {
-    nome: nome.trim(),
-    idade: Number(idade),
-    genero,
-    procura,
-    foto,
-  };
-
-  try {
-    const resposta = await fetch(
-      `${API_URL}/api/participantes`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(novo),
-      }
-    );
-
-    const dados = await resposta.json();
-
-    if (!resposta.ok) {
-      throw new Error(dados.erro || 'Erro ao cadastrar.');
+  async function abrirMeuPerfil() {
+    if (!participanteAtualId) {
+      setModoEdicao(false);
+      setNome('');
+      setIdade('');
+      setGenero('');
+      setProcura('');
+      setFoto('');
+      setTela('cadastro');
+      return;
     }
 
-    localStorage.setItem('deuMatchParticipanteId', dados.id);
-    setParticipanteAtualId(dados.id);
-    setNome('');
-    setIdade('');
-    setGenero('');
-    setProcura('');
-    setFoto('');
-    setCurtidos([]);
-    setTela('participantes');
-  } catch (erro) {
-    console.error('Erro no cadastro:', erro);
-    alert(erro.message || 'Não foi possível cadastrar. Tente novamente.');
+    try {
+      const resposta = await fetch(`${API_URL}/api/participantes`);
+      const pessoas = await resposta.json();
+      const meuPerfil = pessoas.find((pessoa) => pessoa.id === participanteAtualId);
+
+      if (!resposta.ok || !meuPerfil) {
+        throw new Error('Não encontramos seu perfil no servidor. Talvez ele tenha sido apagado após uma reinicialização.');
+      }
+
+      setNome(meuPerfil.nome || '');
+      setIdade(String(meuPerfil.idade ?? ''));
+      setGenero(meuPerfil.genero || '');
+      setProcura(meuPerfil.procura || '');
+      setFoto(meuPerfil.foto || '');
+      setModoEdicao(true);
+      setTela('cadastro');
+    } catch (erro) {
+      alert(erro.message || 'Não foi possível carregar seu perfil.');
+      console.error('Erro ao abrir perfil:', erro);
+    }
   }
-}
+
+  function abrirCadastroOuDescoberta() {
+    if (participanteAtualId) {
+      abrirMeuPerfil();
+    } else {
+      setModoEdicao(false);
+      setNome('');
+      setIdade('');
+      setGenero('');
+      setProcura('');
+      setFoto('');
+      setTela('cadastro');
+    }
+  }
+
+  async function cadastrar(e) {
+    e.preventDefault();
+
+    const dadosPerfil = {
+      nome: nome.trim(),
+      idade: Number(idade),
+      genero,
+      procura,
+      foto,
+    };
+
+    try {
+      const editando = Boolean(participanteAtualId && modoEdicao);
+      const resposta = await fetch(
+        editando
+          ? `${API_URL}/api/participantes/${encodeURIComponent(participanteAtualId)}`
+          : `${API_URL}/api/participantes`,
+        {
+          method: editando ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dadosPerfil),
+        }
+      );
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || 'Não foi possível salvar o perfil.');
+      }
+
+      if (!editando) {
+        localStorage.setItem('deuMatchParticipanteId', dados.id);
+        setParticipanteAtualId(dados.id);
+      }
+
+      setNome(dados.nome || nome);
+      setIdade(String(dados.idade ?? idade));
+      setGenero(dados.genero || genero);
+      setProcura(dados.procura || procura);
+      setFoto(dados.foto || '');
+      setModoEdicao(true);
+      setTela('participantes');
+      alert(editando ? 'Perfil atualizado com sucesso!' : 'Perfil criado com sucesso!');
+    } catch (erro) {
+      console.error('Erro ao salvar perfil:', erro);
+      alert(erro.message || 'Não foi possível salvar. Tente novamente.');
+    }
+  }
 
   async function curtir(id) {
     if (!participanteAtualId) {
@@ -196,9 +273,9 @@ function App() {
 
               <button
                 className="primary-button"
-                onClick={() => setTela('cadastro')}
+                onClick={abrirCadastroOuDescoberta}
               >
-                Criar meu perfil <span>→</span>
+                {participanteAtualId ? 'Meu perfil' : 'Criar meu perfil'} <span>→</span>
               </button>
               
               <button onClick={() => setTela('participantes')}>
@@ -279,7 +356,7 @@ function App() {
         <section className="form-layout">
           <div className="form-intro">
             <span className="eyebrow">BEM-VINDO(A) AO DEU MATCH</span>
-            <h1>Vamos criar uma conexão?</h1>
+            <h1>{modoEdicao ? 'Edite seu perfil' : 'Vamos criar uma conexão?'}</h1>
             <p>
               Monte seu perfil e prepare-se para conhecer
               alguém interessante.
@@ -296,7 +373,7 @@ function App() {
             <div className="form-card-heading">
               <span className="eyebrow">SEU PERFIL</span>
               <h2>Apresente-se 💗</h2>
-              <p>Preencha os campos para participar.</p>
+              <p>{modoEdicao ? 'Atualize suas informações.' : 'Preencha os campos para participar.'}</p>
             </div>
 
             <form onSubmit={cadastrar}>
@@ -406,15 +483,15 @@ function App() {
               </label>
 
               <button className="primary-button submit-button" type="submit">
-                Criar meu perfil <span>→</span>
+                {modoEdicao ? 'Salvar alterações' : 'Criar meu perfil'} <span>→</span>
               </button>
             </form>
 
             <button
               className="back-button"
-              onClick={() => setTela('inicio')}
+              onClick={() => setTela(participanteAtualId ? 'participantes' : 'inicio')}
             >
-              ← Voltar ao início
+              {participanteAtualId ? '← Voltar aos participantes' : '← Voltar ao início'}
             </button>
           </div>
         </section>
@@ -431,7 +508,7 @@ function App() {
 
             <button
               className="primary-button new-profile-button"
-              onClick={() => setTela('cadastro')}
+              onClick={abrirMeuPerfil}
             >
               + Meu perfil
             </button>
@@ -462,9 +539,9 @@ function App() {
               </p>
               <button
                 className="primary-button"
-                onClick={() => setTela('cadastro')}
+                onClick={abrirCadastroOuDescoberta}
               >
-                Adicionar perfil
+                {participanteAtualId ? 'Editar meu perfil' : 'Criar meu perfil'}
               </button>
             </div>
           ) : (

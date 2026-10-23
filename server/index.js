@@ -29,13 +29,11 @@ app.get('/api/participantes', (req, res) => {
   res.json(resultado);
 });
 
-app.post('/api/participantes', (req, res) => {
-  const { nome, idade, genero, procura, foto } = req.body;
+function validarDadosPerfil(body) {
+  const { nome, idade, genero, procura, foto } = body;
 
   if (typeof nome !== 'string' || !nome.trim() || nome.trim().length > 30) {
-    return res.status(400).json({
-      erro: 'Informe um nome ou apelido de até 30 caracteres.',
-    });
+    return 'Informe um nome ou apelido de até 30 caracteres.';
   }
 
   if (
@@ -46,17 +44,15 @@ app.post('/api/participantes', (req, res) => {
     Number(idade) < 18 ||
     Number(idade) > 120
   ) {
-    return res.status(400).json({
-      erro: 'A idade deve ser um número entre 18 e 120.',
-    });
+    return 'A idade deve ser um número entre 18 e 120.';
   }
 
   if (!['Mulher', 'Homem', 'Outro', 'Prefiro não informar'].includes(genero)) {
-    return res.status(400).json({ erro: 'Selecione um gênero válido.' });
+    return 'Selecione um gênero válido.';
   }
 
   if (!['Relacionamento', 'Algo casual', 'Conhecer pessoas'].includes(procura)) {
-    return res.status(400).json({ erro: 'Selecione o que você procura.' });
+    return 'Selecione o que você procura.';
   }
 
   if (
@@ -64,20 +60,55 @@ app.post('/api/participantes', (req, res) => {
     foto !== '' &&
     (typeof foto !== 'string' || !foto.startsWith('data:image/'))
   ) {
-    return res.status(400).json({ erro: 'A foto enviada não é válida.' });
+    return 'A foto enviada não é válida.';
   }
+
+  return null;
+}
+
+function normalizarDadosPerfil(body) {
+  return {
+    nome: body.nome.trim(),
+    idade: Number(body.idade),
+    genero: body.genero,
+    procura: body.procura,
+    foto: body.foto || '',
+  };
+}
+
+app.post('/api/participantes', (req, res) => {
+  const erro = validarDadosPerfil(req.body);
+  if (erro) return res.status(400).json({ erro });
 
   const novoParticipante = {
     id: randomUUID(),
-    nome: nome.trim(),
-    idade: Number(idade),
-    genero,
-    procura,
-    foto: foto || '',
+    ...normalizarDadosPerfil(req.body),
   };
 
   participantes.push(novoParticipante);
   res.status(201).json(novoParticipante);
+});
+
+// Atualiza o perfil existente e preserva o mesmo ID.
+app.put('/api/participantes/:id', (req, res) => {
+  const { id } = req.params;
+  const indice = participantes.findIndex((pessoa) => pessoa.id === id);
+
+  if (indice === -1) {
+    return res.status(404).json({
+      erro: 'Perfil não encontrado. Ele pode ter sido apagado após uma reinicialização do servidor.',
+    });
+  }
+
+  const erro = validarDadosPerfil(req.body);
+  if (erro) return res.status(400).json({ erro });
+
+  participantes[indice] = {
+    id,
+    ...normalizarDadosPerfil(req.body),
+  };
+
+  res.json(participantes[indice]);
 });
 
 app.get('/api/curtidas', (req, res) => {
@@ -110,7 +141,6 @@ app.post('/api/curtidas', (req, res) => {
   }
 
   curtidas.add(`${deId}:${paraId}`);
-
   const match = curtidas.has(`${paraId}:${deId}`);
 
   res.status(201).json({
@@ -131,8 +161,6 @@ app.delete('/api/curtidas', (req, res) => {
   res.json({ ok: true });
 });
 
-// O servidor escuta em todas as interfaces de rede, para permitir acesso
-// por celulares conectados à mesma rede Wi-Fi, se o firewall permitir.
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor Deu Match rodando na porta ${PORT}`);
 });
