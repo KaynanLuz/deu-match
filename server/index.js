@@ -89,6 +89,27 @@ app.post('/api/participantes', (req, res) => {
   res.status(201).json(novoParticipante);
 });
 
+// Exclui um perfil e remove todas as curtidas relacionadas a ele.
+app.delete('/api/participantes/:id', (req, res) => {
+  const { id } = req.params;
+  const indice = participantes.findIndex((pessoa) => pessoa.id === id);
+
+  if (indice === -1) {
+    return res.status(404).json({ erro: 'Perfil não encontrado.' });
+  }
+
+  participantes.splice(indice, 1);
+
+  for (const chave of [...curtidas]) {
+    const [deId, paraId] = chave.split(':');
+    if (deId === id || paraId === id) {
+      curtidas.delete(chave);
+    }
+  }
+
+  res.json({ ok: true });
+});
+
 // Atualiza o perfil existente e preserva o mesmo ID.
 app.put('/api/participantes/:id', (req, res) => {
   const { id } = req.params;

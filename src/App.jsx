@@ -13,6 +13,7 @@ function App() {
   const [curtidos, setCurtidos] = useState([]);
   const [busca, setBusca] = useState('');
   const [modoEdicao, setModoEdicao] = useState(false);
+  const [perfilConfirmado, setPerfilConfirmado] = useState(false);
   const [participanteAtualId, setParticipanteAtualId] = useState(
     () => localStorage.getItem('deuMatchParticipanteId') || ''
   );
@@ -20,6 +21,44 @@ function App() {
   // Para testar no mesmo computador, use localhost.
   // Para celulares na mesma rede Wi-Fi, troque pelo IP local do computador.
   const API_URL = 'https://deu-match-api.onrender.com';
+
+  // Só considera que este navegador tem perfil depois de confirmá-lo no servidor.
+  useEffect(() => {
+    let ativo = true;
+
+    async function confirmarPerfil() {
+      if (!participanteAtualId) {
+        setPerfilConfirmado(false);
+        return;
+      }
+
+      try {
+        const resposta = await fetch(`${API_URL}/api/participantes`);
+        if (!resposta.ok) throw new Error('Não foi possível verificar o perfil.');
+
+        const pessoas = await resposta.json();
+        if (!ativo) return;
+
+        const existe = pessoas.some((pessoa) => pessoa.id === participanteAtualId);
+        setPerfilConfirmado(existe);
+
+        if (!existe) {
+          localStorage.removeItem('deuMatchParticipanteId');
+          setParticipanteAtualId('');
+          setCurtidos([]);
+          setModoEdicao(false);
+        }
+      } catch (erro) {
+        console.error('Erro ao verificar perfil:', erro);
+        if (ativo) setPerfilConfirmado(false);
+      }
+    }
+
+    confirmarPerfil();
+    return () => {
+      ativo = false;
+    };
+  }, [participanteAtualId]);
 
   useEffect(() => {
     if (tela !== 'participantes') return;
@@ -162,6 +201,7 @@ function App() {
       if (!editando) {
         localStorage.setItem('deuMatchParticipanteId', dados.id);
         setParticipanteAtualId(dados.id);
+        setPerfilConfirmado(true);
       }
 
       setNome(dados.nome || nome);
@@ -175,6 +215,44 @@ function App() {
     } catch (erro) {
       console.error('Erro ao salvar perfil:', erro);
       alert(erro.message || 'Não foi possível salvar. Tente novamente.');
+    }
+  }
+
+  async function excluirMeuPerfil() {
+    if (!participanteAtualId || !modoEdicao) return;
+
+    const confirmar = window.confirm(
+      'Tem certeza que deseja excluir seu perfil? Essa ação não pode ser desfeita.'
+    );
+    if (!confirmar) return;
+
+    try {
+      const resposta = await fetch(
+        `${API_URL}/api/participantes/${encodeURIComponent(participanteAtualId)}`,
+        { method: 'DELETE' }
+      );
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        throw new Error(dados.erro || 'Não foi possível excluir o perfil.');
+      }
+
+      localStorage.removeItem('deuMatchParticipanteId');
+      setParticipanteAtualId('');
+      setPerfilConfirmado(false);
+      setParticipantes((lista) => lista.filter((pessoa) => pessoa.id !== participanteAtualId));
+      setCurtidos([]);
+      setNome('');
+      setIdade('');
+      setGenero('');
+      setProcura('');
+      setFoto('');
+      setModoEdicao(false);
+      setTela('inicio');
+      alert('Seu perfil foi excluído.');
+    } catch (erro) {
+      console.error('Erro ao excluir perfil:', erro);
+      alert(erro.message || 'Não foi possível excluir o perfil. Tente novamente.');
     }
   }
 
@@ -278,9 +356,11 @@ function App() {
                 {participanteAtualId ? 'Meu perfil' : 'Criar meu perfil'} <span>→</span>
               </button>
               
-              <button onClick={() => setTela('participantes')}>
-              Ver participantes
-              </button>
+              {participanteAtualId && (
+                <button onClick={() => setTela('participantes')}>
+                  Ver participantes
+                </button>
+              )}
 
               <div className="hero-note">
                 <span>♥</span> Novas conexões, boas histórias.
@@ -486,6 +566,17 @@ function App() {
                 {modoEdicao ? 'Salvar alterações' : 'Criar meu perfil'} <span>→</span>
               </button>
             </form>
+
+            {modoEdicao && participanteAtualId && (
+              <button
+                type="button"
+                className="back-button"
+                onClick={excluirMeuPerfil}
+                style={{ color: '#b42318', marginTop: '12px' }}
+              >
+                Excluir meu perfil
+              </button>
+            )}
 
             <button
               className="back-button"
